@@ -1,0 +1,188 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>SPX Dispatch Production Calculator</title>
+<style>
+*{box-sizing:border-box}
+body{margin:0;background:#f4f6f8;color:#172033;font-family:Arial,Helvetica,sans-serif}
+.wrap{max-width:1200px;margin:auto;padding:24px}
+.header{margin-bottom:18px}.header h1{margin:0;font-size:27px}.header p{margin:6px 0 0;color:#667085}
+.card{background:#fff;border:1px solid #dfe5ec;border-radius:12px;padding:18px;margin-bottom:18px;box-shadow:0 2px 8px #0000000a}
+.input-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:14px}
+label{display:block;font-size:12px;font-weight:700;color:#475467;margin-bottom:6px}
+input{width:100%;padding:11px;border:1px solid #cfd7e2;border-radius:7px;font-size:15px}
+input:focus{outline:2px solid #b8d2e8}
+button{border:0;border-radius:8px;padding:11px 16px;font-weight:700;cursor:pointer;margin-top:15px}
+.primary{background:#0b3b66;color:#fff}.secondary{background:#e8edf3;color:#172033;margin-left:8px}
+table{width:100%;border-collapse:collapse;font-size:13px}
+th{background:#0b3b66;color:#fff;padding:11px 8px;text-align:center}
+td{border:1px solid #dfe5ec;padding:9px 8px;text-align:center}
+td:first-child{text-align:left;font-weight:700}
+.calc{background:#f8fafc;font-weight:700}
+.summary{display:grid;grid-template-columns:repeat(4,1fr);gap:12px}
+.kpi{border:1px solid #e1e7ef;border-radius:9px;padding:14px;background:#fafbfd}
+.kpi .label{font-size:11px;color:#667085}.kpi .value{font-size:22px;font-weight:800;margin-top:5px}
+.note{font-size:12px;color:#667085;margin-top:9px}
+.good{color:#067647;font-weight:700}.warn{color:#b54708;font-weight:700}.bad{color:#b42318;font-weight:700}
+@media(max-width:850px){.input-grid{grid-template-columns:1fr 1fr}.summary{grid-template-columns:1fr 1fr}}
+@media(max-width:560px){.input-grid,.summary{grid-template-columns:1fr}.wrap{padding:12px}}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="header">
+    <h1>SPX Dispatch Production Calculator</h1>
+    <p>Enter the total volume and target productivity. Area volume and estimated rider headcount are calculated automatically.</p>
+  </div>
+
+  <div class="card">
+    <h2>Planning Inputs</h2>
+    <div class="input-grid">
+      <div><label>TOTAL VOLUME</label><input id="totalVolume" type="number" value="12000" min="0" oninput="calculate()"></div>
+      <div><label>SCORECARD TARGET</label><input id="scorecard" type="number" value="117" min="0" oninput="calculate()"></div>
+      <div><label>AVERAGE DISP. PROD</label><input id="avgProd" type="number" value="120" min="0" oninput="calculate()"></div>
+    </div>
+    <div class="note">The area percentage is fixed from your current Prod Calculator. You can edit the percentage and target productivity per area below if needed.</div>
+  </div>
+
+  <div class="card">
+    <table>
+      <thead>
+        <tr>
+          <th>AREA</th>
+          <th>% SHARE IN VOLUME</th>
+          <th>ESTIMATED VOLUME<br>PER AREA</th>
+          <th>TARGET PROD</th>
+          <th>PROJECTED RIDER<br>HEADCOUNT</th>
+          <th>ACTUAL RIDER<br>HEADCOUNT</th>
+          <th>ESTIMATED DISP PROD<br>BASED ON ACTUAL HC</th>
+        </tr>
+      </thead>
+      <tbody id="areaRows"></tbody>
+      <tfoot>
+        <tr>
+          <td colspan="4" style="text-align:right;font-weight:700">TOTAL / AVERAGE:</td>
+          <td class="calc" id="totalProjected">0</td>
+          <td class="calc" id="totalActual">0</td>
+          <td class="calc" id="dispatchAverage">—</td>
+        </tr>
+      </tfoot>
+    </table>
+  </div>
+
+  <div class="card">
+    <h2>Calculation Summary</h2>
+    <div class="summary">
+      <div class="kpi"><div class="label">TOTAL VOLUME</div><div class="value" id="sumVolume">0</div></div>
+      <div class="kpi"><div class="label">PROJECTED RIDER HC</div><div class="value" id="sumProjected">0</div></div>
+      <div class="kpi"><div class="label">ACTUAL RIDER HC</div><div class="value" id="sumActual">0</div></div>
+      <div class="kpi"><div class="label">HC GAP</div><div class="value" id="sumGap">0</div></div>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>How the calculator works</h2>
+    <p><b>Estimated Volume per Area</b> = Total Volume × Area % Share</p>
+    <p><b>Projected Rider Headcount</b> = Estimated Volume per Area ÷ Target Productivity, rounded up to the next whole rider.</p>
+    <p><b>Estimated Dispatch Productivity based on Actual HC</b> = Estimated Volume per Area ÷ Actual Rider Headcount.</p>
+  </div>
+</div>
+
+<script>
+const areas = [
+  {name:"Jaro", share:21.70, prod:120},
+  {name:"Leganes", share:15.00, prod:120},
+  {name:"New Lucena", share:6.75, prod:120},
+  {name:"Santa Barbara", share:28.00, prod:120},
+  {name:"Zarraga", share:9.50, prod:120},
+  {name:"Dumangas", share:12.80, prod:120},
+  {name:"Pavia", share:6.25, prod:120}
+];
+
+function fmt(n,d=0){
+  return Number(n).toLocaleString(undefined,{minimumFractionDigits:d,maximumFractionDigits:d});
+}
+
+function renderRows(){
+  const body=document.getElementById("areaRows");
+  body.innerHTML="";
+  areas.forEach((a,i)=>{
+    const tr=document.createElement("tr");
+    tr.innerHTML=`
+      <td>${a.name}</td>
+      <td><input id="share${i}" type="number" step="0.01" value="${a.share}" oninput="calculate()"></td>
+      <td class="calc" id="volume${i}">0</td>
+      <td><input id="prod${i}" type="number" min="0" value="${a.prod}" oninput="calculate()"></td>
+      <td class="calc" id="projected${i}">0</td>
+      <td><input id="actual${i}" type="number" min="0" value="" placeholder="Enter HC" oninput="calculate()"></td>
+      <td class="calc" id="actualProd${i}">—</td>
+    `;
+    body.appendChild(tr);
+  });
+}
+
+function calculate(){
+  const total=Number(document.getElementById("totalVolume").value)||0;
+  let projectedTotal=0, actualTotal=0, weightedProdVolume=0;
+
+  areas.forEach((a,i)=>{
+    const share=(Number(document.getElementById("share"+i).value)||0)/100;
+    const targetProd=Number(document.getElementById("prod"+i).value)||0;
+    const actualHC=Number(document.getElementById("actual"+i).value)||0;
+
+    // Core planning formulas requested by user
+    const estimatedVolume=total*share;
+    const projectedHC=targetProd>0 ? Math.ceil(estimatedVolume/targetProd) : 0;
+    const actualProd=actualHC>0 ? estimatedVolume/actualHC : null;
+
+    document.getElementById("volume"+i).textContent=fmt(estimatedVolume);
+    document.getElementById("projected"+i).textContent=fmt(projectedHC);
+    document.getElementById("actualProd"+i).textContent=actualProd===null ? "—" : fmt(actualProd,1);
+
+    projectedTotal+=projectedHC;
+    actualTotal+=actualHC;
+    if(actualProd!==null) weightedProdVolume+=estimatedVolume;
+
+    const cell=document.getElementById("actualProd"+i);
+    if(actualProd!==null){
+      cell.className="calc "+(actualProd>=targetProd?"good":"bad");
+    }
+  });
+
+  const shares=areas.reduce((s,a,i)=>s+(Number(document.getElementById("share"+i).value)||0),0);
+  const gap=actualTotal-projectedTotal;
+
+  document.getElementById("totalProjected").textContent=fmt(projectedTotal);
+  document.getElementById("totalActual").textContent=fmt(actualTotal);
+  document.getElementById("dispatchAverage").textContent=actualTotal>0 ? fmt(total/actualTotal,1) : "—";
+
+  document.getElementById("sumVolume").textContent=fmt(total);
+  document.getElementById("sumProjected").textContent=fmt(projectedTotal);
+  document.getElementById("sumActual").textContent=fmt(actualTotal);
+  const gapEl=document.getElementById("sumGap");
+  gapEl.textContent=(gap>=0?"+":"")+fmt(gap);
+  gapEl.className="value "+(gap<0?"bad":"good");
+
+  // Show share warning in the footer
+  const footer=document.querySelector("tfoot td:first-child");
+  if(Math.abs(shares-100)>0.01){
+    footer.innerHTML=`<span class="warn">AREA SHARE TOTAL: ${fmt(shares,2)}% (should be 100%)</span>`;
+  }else{
+    footer.innerHTML="TOTAL / AVERAGE:";
+  }
+}
+
+function resetExample(){
+  document.getElementById("totalVolume").value=12000;
+  document.getElementById("scorecard").value=117;
+  document.getElementById("avgProd").value=120;
+  renderRows();
+  calculate();
+}
+renderRows();
+calculate();
+</script>
+</body>
+</html>
